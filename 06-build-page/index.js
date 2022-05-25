@@ -49,12 +49,17 @@ class Build {
     const bundlePath = path.join(this._distPath, 'style.css');
 
     await rm(bundlePath, { force: true });
+
+    const writeStream = createWriteStream(bundlePath, { flags: 'a' });
+    
     const CSSFiles =  (await readdir(stylesPath)).filter(file => path.extname(path.join(stylesPath, file)) === '.css');
     CSSFiles.forEach(file => {
+      const data = [];
       const currentPath = path.join(stylesPath, file);
       const readStream = createReadStream(currentPath, 'utf-8');
-      const writeStream = createWriteStream(bundlePath, { flags: 'a' });
-      readStream.pipe(writeStream);
+      readStream.on('data', chunk => data.push(chunk));
+      readStream.on('end', () => data.forEach(item => writeStream.write(`${item}\n`)));
+      readStream.on('error', err => console.log('Error: ', err.message));
     });
   }
 
