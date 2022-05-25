@@ -1,6 +1,6 @@
 const path = require('path');
 const { readdir, copyFile, rm, mkdir } = require('fs/promises');
-const { createReadStream, createWriteStream, readFile } = require('fs');
+const { createReadStream, createWriteStream } = require('fs');
 
 class Build {
   constructor(assets, styles, components, template) {
@@ -52,7 +52,7 @@ class Build {
 
     const writeStream = createWriteStream(bundlePath, { flags: 'a' });
     
-    const CSSFiles =  (await readdir(stylesPath)).filter(file => path.extname(path.join(stylesPath, file)) === '.css');
+    const CSSFiles = (await readdir(stylesPath)).filter(file => path.extname(path.join(stylesPath, file)) === '.css');
     CSSFiles.forEach(file => {
       const data = [];
       const currentPath = path.join(stylesPath, file);
@@ -67,27 +67,30 @@ class Build {
     const componentsPath = path.join(this._basePath, this.components);
     const templatePath = path.join(this._basePath, this.template);
     const bundlePath = path.join(this._distPath, 'index.html');
+
+    await rm(bundlePath, { force: true });
+
     const components = (await readdir(componentsPath)).filter(file => path.extname(path.join(componentsPath, file)) === '.html');
+    const templateReadStream = createReadStream(templatePath, 'utf8');
+    let templateData = '';
+
+    templateReadStream.on('data', chunk => templateData += chunk);
+    templateReadStream.on('end', () => {
+      
     
-    readFile(templatePath, { encoding: 'utf8' }, (err, templateData) => {
-      if (err) throw err;
-
-      let html = templateData;
-
-      components.forEach((file, i) => {
+      components.forEach(async (file) => {
+        let componentData = '';
         const name = file.split('.')[0];
-        const filePath = path.join(this._basePath, this.components, file);
-        readFile(filePath, { encoding: 'utf8' }, (err, fileData) => {
-          if (err) throw err;
-
-          html = html.replace(`{{${name}}}`, fileData);
-
-          if (i === components.length - 1) {
-            const writeStream = createWriteStream(bundlePath);
-            writeStream.write(html);
-          }
-        }); 
-      });
+        const currentPath = path.join(this._basePath, this.components, file);
+        const componentReadStream = createReadStream(currentPath, 'utf-8');
+        componentReadStream.on('data', chunk => componentData += chunk);
+        componentReadStream.on('end', () => {
+          templateData = templateData.replace(`{{${name}}}`, componentData);
+          const bundleWriteStream = createWriteStream(bundlePath);
+          bundleWriteStream.write(templateData);
+        });
+        componentReadStream.on('error', err => console.log('Error: ', err.message));      
+      });  
     });
   }
 }
